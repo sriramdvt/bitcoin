@@ -682,7 +682,12 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
 
     def sync_all(self, nodes=None):
         self.sync_blocks(nodes)
-        self.sync_mempools(nodes)
+        try:
+            self.sync_mempools(nodes)
+        except JSONRPCException as e:
+            if (e.error["code"]) != -33 or ("Mempool disabled or instance not found" not in e.error['message']):
+                raise e
+            self.log.info("Mempool disabled or instance not found, unable to sync mempools of the nodes")
 
     def wait_until(self, test_function, timeout=60):
         return wait_until_helper(test_function, timeout=timeout, timeout_factor=self.options.timeout_factor)

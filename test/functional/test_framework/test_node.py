@@ -235,7 +235,12 @@ class TestNode():
                 if self.version_is_at_least(190000):
                     # getmempoolinfo.loaded is available since commit
                     # bb8ae2c (version 0.19.0)
-                    wait_until_helper(lambda: rpc.getmempoolinfo()['loaded'], timeout_factor=self.timeout_factor)
+                    try:
+                        wait_until_helper(lambda: rpc.getmempoolinfo()['loaded'], timeout_factor=self.timeout_factor)
+                    except JSONRPCException as e:
+                        if (e.error["code"]) != -33 or ("Mempool disabled or instance not found" not in e.error['message']):
+                            raise e
+                        self.log.info("Mempool disabled or instance not found")
                     # Wait for the node to finish reindex, block import, and
                     # loading the mempool. Usually importing happens fast or
                     # even "immediate" when the node is started. However, there
