@@ -580,7 +580,7 @@ protected:
     mutable std::atomic<bool> m_cached_finished_ibd{false};
 
     //! Optional mempool that is kept in sync with the chain.
-    //! Only the active chainstate has a mempool.
+    //! At most, only the active chainstate has a mempool.
     CTxMemPool* m_mempool;
 
     const CChainParams& m_params;

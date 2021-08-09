@@ -1995,7 +1995,7 @@ CoinsCacheSizeState CChainState::GetCoinsCacheSizeState()
 {
     return this->GetCoinsCacheSizeState(
         m_coinstip_cache_size_bytes,
-        gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000);
+        gArgs.GetBoolArg("-mempool", DEFAULT_INITMEMPOOL) ? gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000 : 0);
 }
 
 CoinsCacheSizeState CChainState::GetCoinsCacheSizeState(
