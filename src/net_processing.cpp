@@ -1165,6 +1165,7 @@ void PeerManagerImpl::InitializeNode(CNode *pnode)
 
 void PeerManagerImpl::ReattemptInitialBroadcast(CScheduler& scheduler)
 {
+    if (!m_mempool) return;
     std::set<uint256> unbroadcast_txids = m_mempool->GetUnbroadcastTxs();
 
     for (const auto& txid : unbroadcast_txids) {
@@ -1632,6 +1633,8 @@ void PeerManagerImpl::BlockChecked(const CBlock& block, const BlockValidationSta
 
 bool PeerManagerImpl::AlreadyHaveTx(const GenTxid& gtxid)
 {
+    if (!m_mempool) return false;
+
     if (m_chainman.ActiveChain().Tip()->GetBlockHash() != hashRecentRejectsChainTip) {
         // If the chain tip has changed previously rejected transactions
         // might be now valid, e.g. due to a nLockTime'd tx becoming valid,
@@ -1883,6 +1886,8 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
 
 CTransactionRef PeerManagerImpl::FindTxForGetData(const CNode& peer, const GenTxid& gtxid, const std::chrono::seconds mempool_req, const std::chrono::seconds now)
 {
+    if (!m_mempool) return {};
+
     auto txinfo = m_mempool->info(gtxid);
     if (txinfo.tx) {
         // If a TX could have been INVed in reply to a MEMPOOL request,
@@ -2221,6 +2226,8 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, const Peer& peer,
  */
 void PeerManagerImpl::ProcessOrphanTx(std::set<uint256>& orphan_work_set)
 {
+    if (!m_mempool) return;
+
     AssertLockHeld(cs_main);
     AssertLockHeld(g_cs_orphans);
 
@@ -2913,8 +2920,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         // block-relay-only peer
         bool fBlocksOnly = m_ignore_incoming_txs || (pfrom.m_tx_relay == nullptr);
 
-        // Allow peers with relay permission to send data other than blocks in blocks only mode
-        if (pfrom.HasPermission(NetPermissionFlags::Relay)) {
+        // Allow peers with relay permission to send data other than blocks in blocks only mode, and if
+        // the mempool exists
+        if (m_mempool && pfrom.HasPermission(NetPermissionFlags::Relay)) {
             fBlocksOnly = false;
         }
 
@@ -3187,7 +3195,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         // Stop processing the transaction early if
         // 1) We are in blocks only mode and peer has no relay permission
         // 2) This peer is a block-relay-only peer
-        if ((m_ignore_incoming_txs && !pfrom.HasPermission(NetPermissionFlags::Relay)) || (pfrom.m_tx_relay == nullptr))
+        if ((m_ignore_incoming_txs && !pfrom.HasPermission(NetPermissionFlags::Relay)) || (pfrom.m_tx_relay == nullptr) || !m_mempool)
         {
             LogPrint(BCLog::NET, "transaction sent in violation of protocol peer=%d\n", pfrom.GetId());
             pfrom.fDisconnect = true;
@@ -3396,6 +3404,14 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::CMPCTBLOCK)
     {
+        // Stop processing the compact block if there is no mempool
+        if (!m_mempool)
+        {
+            LogPrint(BCLog::NET, "No mempool to reconstruct from compact block sent by peer=%d\n", pfrom.GetId());
+            pfrom.fDisconnect = true;
+            return;
+        }
+
         // Ignore cmpctblock received while importing
         if (fImporting || fReindex) {
             LogPrint(BCLog::NET, "Unexpected cmpctblock message received from peer %d\n", pfrom.GetId());
@@ -4732,7 +4748,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                 }
 
                 // Respond to BIP35 mempool requests
-                if (fSendTrickle && pto->m_tx_relay->fSendMempool) {
+                if (fSendTrickle && pto->m_tx_relay->fSendMempool && m_mempool) {
                     auto vtxinfo = m_mempool->infoAll();
                     pto->m_tx_relay->fSendMempool = false;
                     const CFeeRate filterrate{pto->m_tx_relay->minFeeFilter.load()};
@@ -4762,7 +4778,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                 }
 
                 // Determine transactions to relay
-                if (fSendTrickle) {
+                if (fSendTrickle && m_mempool) {
                     // Produce a vector with all candidates for sending
                     std::vector<std::set<uint256>::iterator> vInvTx;
                     vInvTx.reserve(pto->m_tx_relay->setInventoryTxToSend.size());
