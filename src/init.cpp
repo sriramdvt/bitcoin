@@ -699,13 +699,13 @@ void InitParameterInteraction(ArgsManager& args)
             LogPrintf("%s: parameter interaction: -whitelistforcerelay=1 -> setting -whitelistrelay=1\n", __func__);
     }
 
-    // If mempool is disabled,
-    if (!args.GetBoolArg("-mempool", DEFAULT_INITMEMPOOL)) {
-        if (args.SoftSetBoolArg("-whitelistrelay", false))
-            LogPrintf("%s: parameter interaction: -mempool=0 -> setting -whitelistrelay=0\n", __func__);
-        if (args.SoftSetBoolArg("-walletbroadcast", false))
-            LogPrintf("%s: parameter interaction: -mempool=0 -> setting -walletbroadcast=0\n", __func__);
-    }
+    // // If mempool is disabled,
+    // if (!args.GetBoolArg("-mempool", DEFAULT_INITMEMPOOL)) {
+    //     if (args.SoftSetBoolArg("-whitelistrelay", false))
+    //         LogPrintf("%s: parameter interaction: -mempool=0 -> setting -whitelistrelay=0\n", __func__);
+    //     if (args.SoftSetBoolArg("-walletbroadcast", false))
+    //         LogPrintf("%s: parameter interaction: -mempool=0 -> setting -walletbroadcast=0\n", __func__);
+    // }
 }
 
 /**
@@ -1180,9 +1180,10 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     fListen = args.GetBoolArg("-listen", DEFAULT_LISTEN);
     fDiscover = args.GetBoolArg("-discover", true);
-    const bool ignores_incoming_txs{
-        args.GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY) || !args.GetBoolArg("-mempool", DEFAULT_INITMEMPOOL)
-        };
+    // const bool ignores_incoming_txs{
+    //     args.GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY) || !args.GetBoolArg("-mempool", DEFAULT_INITMEMPOOL)
+    //     };
+    const bool ignores_incoming_txs = args.GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY);
 
     assert(!node.addrman);
     auto check_addrman = std::clamp<int32_t>(args.GetArg("-checkaddrman", DEFAULT_ADDRMAN_CONSISTENCY_CHECKS), 0, 1000000);

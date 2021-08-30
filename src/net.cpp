@@ -485,6 +485,11 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
         addr_bind = GetBindAddress(sock->Get());
     }
     CNode* pnode = new CNode(id, nLocalServices, sock->Release(), addrConnect, CalculateKeyedNetGroup(addrConnect), nonce, addr_bind, pszDest ? pszDest : "", conn_type, /* inbound_onion */ false);
+    // Not using DEFAULT_INITMEMPOOL since it is declared in txmempool.h
+    if (!gArgs.GetBoolArg("-mempool", true)) {
+        pnode->m_tx_relay = nullptr;
+    }
+
     pnode->AddRef();
 
     // We're making a new connection, harvest entropy from the time (and our peer count)
@@ -1180,6 +1185,12 @@ void CConnman::CreateNodeFromAcceptedSocket(SOCKET hSocket,
 
     const bool inbound_onion = std::find(m_onion_binds.begin(), m_onion_binds.end(), addr_bind) != m_onion_binds.end();
     CNode* pnode = new CNode(id, nodeServices, hSocket, addr, CalculateKeyedNetGroup(addr), nonce, addr_bind, "", ConnectionType::INBOUND, inbound_onion);
+
+    // Not using DEFAULT_INITMEMPOOL since it is declared in txmempool.h
+    if (!gArgs.GetBoolArg("-mempool", true)) {
+        pnode->m_tx_relay = nullptr;
+    }
+    
     pnode->AddRef();
     pnode->m_permissionFlags = permissionFlags;
     pnode->m_prefer_evict = discouraged;
