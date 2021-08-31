@@ -413,7 +413,7 @@ private:
     /** Pointer to this node's banman. May be nullptr - check existence before dereferencing. */
     BanMan* const m_banman;
     ChainstateManager& m_chainman;
-    CTxMemPool* m_mempool;
+    CTxMemPool* const m_mempool;
     TxRequestTracker m_txrequest GUARDED_BY(::cs_main);
 
     /** The height of the best chain */
@@ -884,6 +884,9 @@ bool PeerManagerImpl::BlockRequested(NodeId nodeid, const CBlockIndex& block, st
 void PeerManagerImpl::MaybeSetPeerAsAnnouncingHeaderAndIDs(NodeId nodeid)
 {
     AssertLockHeld(cs_main);
+
+    if (!m_mempool) return;
+
     CNodeState* nodestate = State(nodeid);
     if (!nodestate || !nodestate->fSupportsDesiredCmpctVersion) {
         // Never ask from peers who can't provide witnesses.
@@ -1890,7 +1893,7 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
 
 CTransactionRef PeerManagerImpl::FindTxForGetData(const CNode& peer, const GenTxid& gtxid, const std::chrono::seconds mempool_req, const std::chrono::seconds now)
 {
-    if (!m_mempool) return {};
+    if (!Assume(m_mempool)) return {};
 
     auto txinfo = m_mempool->info(gtxid);
     if (txinfo.tx) {
@@ -2174,7 +2177,11 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, const Peer& peer,
                             pindexLast->GetBlockHash().ToString(), pindexLast->nHeight);
                 }
                 if (vGetData.size() > 0) {
-                    if (nodestate->fSupportsDesiredCmpctVersion && vGetData.size() == 1 && mapBlocksInFlight.size() == 1 && pindexLast->pprev->IsValid(BLOCK_VALID_CHAIN)) {
+                    if (m_mempool
+                        && nodestate->fSupportsDesiredCmpctVersion
+                        && vGetData.size() == 1
+                        && mapBlocksInFlight.size() == 1
+                        && pindexLast->pprev->IsValid(BLOCK_VALID_CHAIN)) {
                         // In any case, we want to download using a compact block, not a regular one
                         vGetData[0] = CInv(MSG_CMPCT_BLOCK, vGetData[0].hash);
                     }
@@ -2230,7 +2237,7 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, const Peer& peer,
  */
 void PeerManagerImpl::ProcessOrphanTx(std::set<uint256>& orphan_work_set)
 {
-    if (!m_mempool) return;
+    if (!Assume(m_mempool)) return;
 
     AssertLockHeld(cs_main);
     AssertLockHeld(g_cs_orphans);
@@ -3408,16 +3415,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::CMPCTBLOCK)
     {
-        // Stop processing the compact block if there is no mempool
-        if (!m_mempool)
-        {
-            LogPrint(BCLog::NET, "No mempool to reconstruct from compact block sent by peer=%d\n", pfrom.GetId());
-            pfrom.fDisconnect = true;
-            return;
-        }
-
-        // Ignore cmpctblock received while importing
-        if (fImporting || fReindex) {
+        // Ignore cmpctblock received while importing, or when there is no mempool
+        if (fImporting || fReindex || !m_mempool) {
             LogPrint(BCLog::NET, "Unexpected cmpctblock message received from peer %d\n", pfrom.GetId());
             return;
         }
@@ -4752,7 +4751,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                 }
 
                 // Respond to BIP35 mempool requests
-                if (fSendTrickle && pto->m_tx_relay->fSendMempool && m_mempool) {
+                if (fSendTrickle && pto->m_tx_relay->fSendMempool) {
                     auto vtxinfo = m_mempool->infoAll();
                     pto->m_tx_relay->fSendMempool = false;
                     const CFeeRate filterrate{pto->m_tx_relay->minFeeFilter.load()};
@@ -4782,7 +4781,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                 }
 
                 // Determine transactions to relay
-                if (fSendTrickle && m_mempool) {
+                if (fSendTrickle) {
                     // Produce a vector with all candidates for sending
                     std::vector<std::set<uint256>::iterator> vInvTx;
                     vInvTx.reserve(pto->m_tx_relay->setInventoryTxToSend.size());
